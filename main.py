@@ -1,56 +1,84 @@
 import time
+import subprocess
 
-interval = 1.0
-last_tx1 = 0
-last_rx1 = 0
-last_tx2 = 0
-last_rx2 = 0
+interval = 2.0
+# List of interfaces to monitor
+interfaces = [
+    # 'bond0', 'bond1', 'bond2', 'bond3', 'bond4',
+    # 'br-0f8836ab9027', 'br-cbff9ce17940',
+    # 'docker0',
+    'eth0', 'eth1', 'eth2', 'eth3', 'eth4', 'eth5', 'eth6', 'eth7', 'eth8', 'eth9',
+    # 'lo'
+]
 
+# Configuration
+USE_ETHTOOL = True  # Set to True to use ethtool, False to use sysfs
+
+# Initialize dictionary to store last values for each interface
+last_tx = {interface: 0 for interface in interfaces}
+last_rx = {interface: 0 for interface in interfaces}
 init = False
 
 def read_counter(interface, counter):
-    with open(f'/sys/class/net/{interface}/statistics/{counter}', 'r') as f:
-        return int(f.read().strip())
+    if USE_ETHTOOL:
+        try:
+            cmd = f"sudo ethtool -S {interface}"
+            result = subprocess.check_output(cmd, shell=True).decode().split()
+            
+            if counter == 'tx_bytes':
+                index = result.index('tx_bytes_phy:') + 1
+            else:  # rx_bytes
+                index = result.index('rx_bytes_phy:') + 1
+                
+            return int(result[index])
+        except (subprocess.CalledProcessError, ValueError, IndexError):
+            return 0
+    else:
+        try:
+            with open(f'/sys/class/net/{interface}/statistics/{counter}', 'r') as f:
+                return int(f.read().strip())
+        except FileNotFoundError:
+            return 0
+
+def format_bw(bw):
+    if bw < 1:  # Less than 1 byte
+        return "0.0"
+    # Convert to Gbps directly
+    return f"{round(bw/1024.0/1024.0/1024.0*8, 2)}"  # Always show in Gbps with 2 decimal places
 
 while True:
-    print("####################################")
-    interface = 'enp37s0f0np0'
+    print("\n" + "="*80)
+    print(f"Network Bandwidth Monitor - {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print("="*80)
+    print(f"{'Interface':<15} {'Tx':>12} {'Rx':>12}")
+    print("-"*80)
     
-    current_tx = read_counter(interface, 'tx_bytes')
-    current_rx = read_counter(interface, 'rx_bytes')
+    # Monitor all interfaces
+    for interface in interfaces:
+        try:
+            current_tx = read_counter(interface, 'tx_bytes')
+            current_rx = read_counter(interface, 'rx_bytes')
+
+            if not init:
+                bandwidth_tx = (current_tx - current_tx) / interval
+                bandwidth_rx = (current_rx - current_rx) / interval
+            else:
+                bandwidth_tx = (current_tx - last_tx[interface]) / interval
+                bandwidth_rx = (current_rx - last_rx[interface]) / interval
+
+            tx_str = format_bw(bandwidth_tx)
+            rx_str = format_bw(bandwidth_rx)
+            
+            print(f"{interface:<15} {tx_str:>10}Gbps {rx_str:>10}Gbps")
+
+            last_tx[interface] = current_tx
+            last_rx[interface] = current_rx
+            
+        except Exception as e:
+            print(f"{interface:<15} {'Error':>12} {'Error':>12}")
+            continue
 
     if not init:
-        bandwidth_tx = (current_tx - current_tx) / interval
-        bandwidth_rx = (current_rx - current_rx) / interval
-    else:
-        bandwidth_tx = (current_tx - last_tx1) / interval
-        bandwidth_rx = (current_rx - last_rx1) / interval
-
-    print(interface + ':')
-    print('Tx BW: ' + str(0.0 if bandwidth_tx < 200 else round(bandwidth_tx/1024.0/1024.0/1024.0*8, 4)) + ' Gbps')
-    print('Rx BW: ' + str(0.0 if bandwidth_rx < 200 else round(bandwidth_rx/1024.0/1024.0/1024.0*8, 4)) + ' Gbps')
-
-    last_tx1 = current_tx
-    last_rx1 = current_rx
-
-    interface = 'enp37s0f1np1'
-    
-    current_tx = read_counter(interface, 'tx_bytes')
-    current_rx = read_counter(interface, 'rx_bytes')
-
-    if not init:
-        bandwidth_tx = (current_tx - current_tx) / interval
-        bandwidth_rx = (current_rx - current_rx) / interval
         init = True
-    else:
-        bandwidth_tx = (current_tx - last_tx2) / interval
-        bandwidth_rx = (current_rx - last_rx2) / interval
-
-    print(interface + ':')
-    print('Tx BW: ' + str(0.0 if bandwidth_tx < 200 else round(bandwidth_tx/1024.0/1024.0/1024.0*8, 4)) + ' Gbps')
-    print('Rx BW: ' + str(0.0 if bandwidth_rx < 200 else round(bandwidth_rx/1024.0/1024.0/1024.0*8, 4)) + ' Gbps')
-
-    last_tx2 = current_tx
-    last_rx2 = current_rx
 
     time.sleep(interval)
