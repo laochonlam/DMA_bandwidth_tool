@@ -4,11 +4,7 @@ import subprocess
 interval = 2.0
 # List of interfaces to monitor
 interfaces = [
-    # 'bond0', 'bond1', 'bond2', 'bond3', 'bond4',
-    # 'br-0f8836ab9027', 'br-cbff9ce17940',
-    # 'docker0',
     'eth0', 'eth1', 'eth2', 'eth3', 'eth4', 'eth5', 'eth6', 'eth7', 'eth8', 'eth9',
-    # 'lo'
 ]
 
 # Configuration
